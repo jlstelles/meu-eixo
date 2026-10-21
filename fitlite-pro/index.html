@@ -267,8 +267,18 @@ input[type=text],input[type=search],input[type=password]{min-height:44px;backgro
     <div class="row">
       <span class="soft grow" id="radio-now" aria-live="polite">Escolha um estilo para listar emissoras.</span>
       <button class="btn btn-sm hide" id="radio-stop" data-act="radio-stop">Parar</button>
+      <button class="btn btn-sm btn-em hide" id="radio-last" data-act="radio-last">Tocar a última</button>
     </div>
     <div id="radio-list" style="display:grid;gap:8px"></div>
+    <details>
+      <summary>Adicionar uma rádio pelo link</summary>
+      <div style="display:grid;gap:8px;padding-top:6px">
+        <input type="text" id="radio-name" placeholder="Nome (ex.: Paraíso Surf)" maxlength="80" aria-label="Nome da rádio" autocomplete="off">
+        <input type="text" id="radio-url" placeholder="https://... (link direto do áudio)" maxlength="500" aria-label="Link direto do áudio da rádio" autocapitalize="none" spellcheck="false" autocomplete="off">
+        <button class="btn btn-sm" data-act="radio-add">Salvar nos favoritos</button>
+        <p class="soft">Use o link do <b>áudio</b> (geralmente termina em .mp3, .aac ou é um endereço de servidor de streaming), não o link da página da rádio. Para achar: abra a página da rádio no PC, aperte F12, aba Rede (Network), toque o play, filtre por “Mídia” (Media) e copie o endereço que aparecer. Só funciona com https.</p>
+      </div>
+    </details>
     <p class="soft">A lista vem do diretório aberto radio-browser.info; o áudio vem direto de cada emissora, que pode ter a própria propaganda. Precisa de internet. <a href="https://radio.garden" target="_blank" rel="noopener noreferrer" style="color:var(--em2)">Alternativa: radio.garden</a></p>
   </section>
 
@@ -487,7 +497,7 @@ const BREATH = {
 const freshState = () => ({
   v: 2, waterGoal: 2500, sound: true,
   reminders: Object.fromEntries(Object.entries(REM).map(([k, r]) => [k, { on: false, interval: r.def, last: null }])),
-  days: {}, walks: [], radio: { favs: [], br: true },
+  days: {}, walks: [], radio: { favs: [], br: true, last: null },
 });
 
 function cleanReminders(raw) {
@@ -531,6 +541,8 @@ function normalize(raw) {
   }
   if (raw.radio && typeof raw.radio === 'object') {
     s.radio.br = raw.radio.br !== false;
+    const l = raw.radio.last;
+    if (l && typeof l === 'object' && typeof l.url === 'string' && /^https?:\/\//i.test(l.url) && l.url.length < 500 && typeof l.name === 'string' && l.name.trim()) s.radio.last = { name: l.name.trim().slice(0, 80), url: l.url };
     if (Array.isArray(raw.radio.favs)) {
       const seen = new Set();
       s.radio.favs = raw.radio.favs.map((f) => (f && typeof f === 'object' && typeof f.url === 'string' && /^https?:\/\//i.test(f.url) && f.url.length < 500 && typeof f.name === 'string' && f.name.trim())
@@ -1086,15 +1098,40 @@ async function radioLoad(tagKey, name) {
     radioNow('Não consegui buscar a lista agora (sem internet ou serviço fora do ar). Tente de novo ou use o radio.garden.');
   }
 }
+function mediaSession(st) {
+  try {
+    if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;
+    navigator.mediaSession.metadata = st ? new MediaMetadata({ title: st.name, artist: 'FitLite Pro', artwork: [{ src: 'icon-512.png', sizes: '512x512', type: 'image/png' }] }) : null;
+    navigator.mediaSession.setActionHandler('play', () => { radio.play().catch(() => {}); });
+    navigator.mediaSession.setActionHandler('pause', () => radio.pause());
+    navigator.mediaSession.setActionHandler('stop', () => radioStop());
+  } catch {}
+}
+function renderRadioLast() {
+  const l = state.radio.last, b = $('radio-last');
+  b.classList.toggle('hide', !l || !!radioCur);
+  if (l) b.setAttribute('aria-label', 'Tocar a última rádio: ' + l.name);
+}
 async function radioPlay(st) {
   audio.pause(); if (lofi) toggleLofi();
-  radioCur = st; radio.src = st.url; radioNow('Conectando: ' + st.name + '…'); $('radio-stop').classList.remove('hide');
+  state.radio.last = { name: st.name, url: st.url }; save({ sync: false }); mediaSession(st);
+  radioCur = st; radio.src = st.url; radioNow('Conectando: ' + st.name + '…'); $('radio-stop').classList.remove('hide'); renderRadioLast();
   try { await radio.play(); } catch (e) { if (e && e.name !== 'AbortError') radioNow('Não consegui tocar “' + st.name + '”. Tente outra emissora.'); }
 }
 function radioStop() {
   if (!radioCur && !radio.src) return;
   radio.pause(); radio.removeAttribute('src'); try { radio.load(); } catch {}
-  radioCur = null; $('radio-stop').classList.add('hide'); radioNow('Rádio parada.');
+  radioCur = null; $('radio-stop').classList.add('hide'); mediaSession(null); renderRadioLast(); radioNow('Rádio parada.');
+}
+function radioAdd() {
+  const name = $('radio-name').value.trim().slice(0, 80), url = $('radio-url').value.trim();
+  const okUrl = url.length < 500 && (/^https:\/\//i.test(url) || (location.protocol === 'http:' && /^http:\/\//i.test(url)));
+  if (!name) { radioNow('Escreva o nome da rádio.'); return; }
+  if (!okUrl) { radioNow('O link precisa começar com https:// e ser o endereço do áudio.'); return; }
+  const f = state.radio.favs;
+  if (!f.some((x) => x.url === url)) { if (f.length >= 30) { radioNow('Limite de 30 favoritas.'); return; } f.push({ name, url }); save(); }
+  $('radio-name').value = ''; $('radio-url').value = '';
+  radioLoad('fav').then(() => radioNow('Salva em Favoritas. Toque em ▶ para ouvir.'));
 }
 radio.addEventListener('playing', () => { if (radioCur) radioNow('Tocando: ' + radioCur.name); });
 radio.addEventListener('error', () => { if (radioCur) radioNow('A emissora “' + radioCur.name + '” não respondeu. Tente outra.'); });
@@ -1390,6 +1427,8 @@ const ACTIONS = {
   'radio-search': () => { const q = $('radio-q').value.trim().slice(0, 60); if (q) radioLoad(null, q); },
   'radio-play': (el) => { const st = radioList[Number(el.dataset.i)]; if (st) radioPlay(st); },
   'radio-stop': radioStop,
+  'radio-add': radioAdd,
+  'radio-last': () => { const l = state.radio.last; if (l) radioPlay({ name: l.name, url: l.url, meta: '' }); },
   'radio-fav': (el) => {
     const st = radioList[Number(el.dataset.i)]; if (!st) return;
     const f = state.radio.favs, at = f.findIndex((x) => x.url === st.url);
@@ -1424,7 +1463,7 @@ for (const k of Object.keys(REM)) {
 
 function renderAll() {
   renderedDay = todayKey();
-  renderWater(); renderSleep(); renderReminders(); renderHistory(); renderSteps(); renderMind(); $('radio-br').checked = state.radio.br; renderWarn();
+  renderWater(); renderSleep(); renderReminders(); renderHistory(); renderSteps(); renderMind(); $('radio-br').checked = state.radio.br; renderRadioLast(); renderWarn();
 }
 
 /* ================= INÍCIO ================= */
