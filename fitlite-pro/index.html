@@ -1118,11 +1118,13 @@ function renderRadioLast() {
 async function radioPlay(st) {
   audio.pause(); if (lofi) toggleLofi();
   state.radio.last = { name: st.name, url: st.url }; save({ sync: false }); mediaSession(st);
+  radioRetry = 0; clearTimeout(radioRetryTimer);
   radioCur = st; radio.src = st.url; radioNow('Conectando: ' + st.name + '…'); $('radio-stop').classList.remove('hide'); renderRadioLast();
   try { await radio.play(); } catch (e) { if (e && e.name !== 'AbortError') radioNow('Não consegui tocar “' + st.name + '”. Tente outra emissora.'); }
 }
 function radioStop() {
   if (!radioCur && !radio.src) return;
+  clearTimeout(radioRetryTimer); radioRetry = 0;
   radio.pause(); radio.removeAttribute('src'); try { radio.load(); } catch {}
   radioCur = null; $('radio-stop').classList.add('hide'); mediaSession(null); renderRadioLast(); radioNow('Rádio parada.');
 }
@@ -1136,8 +1138,24 @@ function radioAdd() {
   $('radio-name').value = ''; $('radio-url').value = '';
   radioLoad('fav').then(() => radioNow('Salva em Favoritas. Toque em ▶ para ouvir.'));
 }
-radio.addEventListener('playing', () => { if (radioCur) radioNow('Tocando: ' + radioCur.name); });
-radio.addEventListener('error', () => { if (radioCur) radioNow('A emissora “' + radioCur.name + '” não respondeu. Tente outra.'); });
+/* Reconexão: se a transmissão ao vivo parar sozinha (rede suspensa, tela apagada), tenta de novo com espera crescente. */
+let radioRetry = 0, radioRetryTimer = null;
+function radioReconnect() {
+  if (!radioCur) return;
+  if (radioRetry >= 6) { radioNow('A emissora “' + radioCur.name + '” não respondeu. Tente outra.'); return; }
+  clearTimeout(radioRetryTimer);
+  const wait = Math.min(1000 * 2 ** radioRetry, 15000), t0 = radio.currentTime, cur = radioCur; radioRetry++;
+  radioNow('Reconectando: ' + cur.name + '…');
+  radioRetryTimer = setTimeout(() => {
+    if (radioCur !== cur) return;
+    if (!radio.paused && radio.currentTime > t0 + 0.5) { radioRetry = 0; radioNow('Tocando: ' + cur.name); return; }   // voltou sozinho
+    radio.src = cur.url; radio.play().catch(() => {});
+  }, wait);
+}
+radio.addEventListener('playing', () => { radioRetry = 0; if (radioCur) radioNow('Tocando: ' + radioCur.name); });
+radio.addEventListener('error', radioReconnect);
+radio.addEventListener('ended', radioReconnect);
+radio.addEventListener('stalled', radioReconnect);
 radio.addEventListener('waiting', () => { if (radioCur) radioNow('Carregando: ' + radioCur.name + '…'); });
 
 /* ================= HISTÓRICO ================= */
