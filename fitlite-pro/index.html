@@ -494,10 +494,11 @@ const BREATH = {
   deep: { name: 'Relaxamento 4-7-8', ph: [['Inspire', 4], ['Segure', 7], ['Expire', 8]] },
   soft: { name: 'Foco suave 4-4', ph: [['Inspire', 4], ['Expire', 4]] },
 };
+const DEFAULT_RADIO = { name: 'Paraíso Surf (Porto Alegre/RS)', url: 'https://superaudio.radio.br/stream/paraisosurf' };
 const freshState = () => ({
   v: 2, waterGoal: 2500, sound: true,
   reminders: Object.fromEntries(Object.entries(REM).map(([k, r]) => [k, { on: false, interval: r.def, last: null }])),
-  days: {}, walks: [], radio: { favs: [], br: true, last: null },
+  days: {}, walks: [], radio: { favs: [{ ...DEFAULT_RADIO }], br: true, last: null, seeded: true },
 });
 
 function cleanReminders(raw) {
@@ -549,6 +550,8 @@ function normalize(raw) {
         ? { name: f.name.trim().slice(0, 80), url: f.url } : null)
         .filter((f) => f && !seen.has(f.url) && seen.add(f.url)).slice(0, 30);
     }
+    // a rádio padrão entra uma única vez; se você a remover, ela não volta
+    if (raw.radio.seeded !== true && !s.radio.favs.some((f) => f.url === DEFAULT_RADIO.url)) s.radio.favs.unshift({ ...DEFAULT_RADIO });
   }
   return s;
 }
