@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Meu Eixo</title>
+  <meta name="description" content="Autocuidado pessoal: água, sono, refeições, pausas e movimento, com dados guardados só no seu aparelho.">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#conteudo">Pular para o conteúdo</a>
+  <header class="topbar">
+    <h1 id="titulo">Meu Eixo</h1>
+    <p id="subtitulo" class="topbar-sub"></p>
+  </header>
+  <div id="banner" class="banner-area" role="status" aria-live="polite"></div>
+  <main id="conteudo" tabindex="-1"></main>
+  <nav id="abas" class="tabs" aria-label="Principal"></nav>
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+  <noscript><p class="noscript">O Meu Eixo precisa de JavaScript para funcionar.</p></noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
